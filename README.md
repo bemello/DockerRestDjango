@@ -1,2 +1,2 @@
-# recipe-app-api
+# DockerRestDjango
 Recipe API project
