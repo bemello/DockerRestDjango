@@ -27,6 +27,11 @@ from recipe import serializers
                 OpenApiTypes.STR,
                 description='Comma separated list of ingredient IDs to filter',
             ),
+            OpenApiParameter(
+                'is_featured',
+                OpenApiTypes.BOOL,
+                description='Value to filter featured recipes only'
+            )
         ]
     )
 )
@@ -40,26 +45,29 @@ class RecipeViewSet(viewsets.ModelViewSet):
         return [int(str_id) for str_id in qs.split(',')]
 
     def get_queryset(self):
-        res = super().get_queryset()
-
+        super().get_queryset()
+        queryset = self.queryset
         tags = self.request.query_params.get('tags')
         ingredients = self.request.query_params.get('ingredients')
+        featured = self.request.query_params.get('is_featured')
+
+        if featured:
+            queryset = queryset.filter(is_featured=True)
         if tags:
             tag_ids = self._params_to_ints(tags)
-            res = self.queryset.filter(tags__id__in=tag_ids)
+            queryset = queryset.filter(tags__id__in=tag_ids)
         if ingredients:
             ingredient_ids = self._params_to_ints(ingredients)
-            res = self.queryset.filter(ingredients__id__in=ingredient_ids)
-
-        return res.filter(user=self.request.user).order_by('-id').distinct()
+            queryset = queryset.filter(ingredients__id__in=ingredient_ids)
+        return queryset.filter(user=self.request.user).order_by('-id').distinct()
 
     def get_serializer_class(self):
         serializer = super().get_serializer_class()
 
+        if self.action == 'upload_image':
+            serializer = serializers.RecipeImageSerializer
         if self.action == 'list':
             serializer = serializers.RecipeSerializer
-        elif self.action == 'upload_image':
-            serializer = serializers.RecipeImageSerializer
 
         return serializer
 
@@ -102,14 +110,19 @@ class BaseRecipeAttrViewSet(
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        res = super().get_queryset()
+        super().get_queryset()
         assigned_only = bool(
             int(self.request.query_params.get('assigned_only', 0))
         )
-        if assigned_only:
-            res = self.queryset.filter(recipe__isnull=False)
+        queryset = self.queryset
 
-        return res.filter(user=self.request.user).order_by('-name').distinct()
+        if assigned_only:
+            if self.serializer_class == serializers.TagSerializer:
+                queryset = queryset.filter(tag_recipes__isnull=False)
+            else:
+                queryset = queryset.filter(ingredient_recipes__isnull=False)
+
+        return queryset.filter(user=self.request.user).order_by('name').distinct()
 
 
 class TagViewSet(BaseRecipeAttrViewSet):

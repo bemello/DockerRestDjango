@@ -59,6 +59,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     email = models.EmailField(max_length=255, unique=True)
     name = models.CharField(max_length=255)
+    profile_picture = models.ImageField(upload_to='profile_pics', null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
@@ -68,25 +69,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
-
-
-class Recipe(models.Model):
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE
-    )
-    title = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    time_minutes = models.IntegerField()
-    price = models.DecimalField(max_digits=5, decimal_places=2)
-    link = models.CharField(max_length=255, blank=True)
-    tags = models.ManyToManyField('Tag')
-    ingredients = models.ManyToManyField('Ingredient')
-    image = models.ImageField(null=True, upload_to=recipe_image_file_path)
-
-    def __str__(self):
-        return self.title
-
 
 class Tag(models.Model):
 
@@ -108,3 +90,25 @@ class Ingredient(models.Model):
 
     def __str__(self):
         return self.name
+
+class Recipe(models.Model):
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, max_length=100)
+    instructions = models.TextField(blank=True, max_length=5000)
+    servings = models.IntegerField(null=False, default=1)
+    time_minutes = models.IntegerField()
+    price = models.DecimalField(max_digits=5, decimal_places=2)
+    link = models.CharField(max_length=255, blank=True)
+    tags = models.ManyToManyField(Tag, related_name="tag_recipes")
+    ingredients = models.ManyToManyField(Ingredient, related_name="ingredient_recipes")
+    image = models.ImageField(null=True, blank=True, upload_to=recipe_image_file_path)
+    is_featured = models.BooleanField(null=False, default=False, blank=False)
+
+    def __str__(self):
+        return self.title
+
+

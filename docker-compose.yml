@@ -31,6 +31,20 @@ services:
       - POSTGRES_USER=devuser
       - POSTGRES_PASSWORD=changeme
 
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - 5173:5173
+    develop:
+      watch:
+        - path: ./frontend
+          action: sync
+          target: /frontend
+          ignore:
+            - node_modules
+
 volumes:
   dev-db-data:
   dev-static-data:

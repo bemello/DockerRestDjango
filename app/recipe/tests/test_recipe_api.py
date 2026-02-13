@@ -33,7 +33,9 @@ def create_recipe(user, **params):
         'time_minutes': 25,
         'price': Decimal('5.55'),
         'description': 'Sample Description',
+        'instructions':'Do this, this and that',
         'link': 'http://example.com/recipe.pdf',
+        'is_featured': False,
     }
     defaults.update(params)
 
@@ -107,7 +109,29 @@ class PrivateRecipeApiTests(TestCase):
             'time_minutes': 23,
             'price': Decimal('5.99'),
             'description': 'Sample Description',
+            'instructions': 'Please, follow the steps accordingly',
+            'servings': 3,
             'link': 'http://example.com/recipe.pdf',
+        }
+        res = self.client.post(RECIPES_URL, recipe_payload)
+
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        recipe = Recipe.objects.get(id=res.data['id'])
+
+        for k, v in recipe_payload.items():
+            self.assertEqual(getattr(recipe, k), v)
+
+        self.assertEqual(recipe.user, self.user)
+
+    def test_create_featured_recipe(self):
+        recipe_payload = {
+            'title': 'Featured Recipe Title',
+            'time_minutes': 23,
+            'price': Decimal('5.99'),
+            'description': 'Featured Recipe Sample Description',
+            'instructions': 'Follow the feature recipe instructions',
+            'link': 'http://example.com/feature_recipe.pdf',
+            'is_featured': True
         }
         res = self.client.post(RECIPES_URL, recipe_payload)
 
@@ -140,6 +164,8 @@ class PrivateRecipeApiTests(TestCase):
             'title': 'New Recipe Title',
             'link': 'http://example.com/new-recipe.pdf',
             'description': 'New Recipe Description',
+            'instructions': 'Instructions',
+            'servings': 4,
             'time_minutes': 10,
             'price': Decimal('2.50'),
         }
@@ -394,6 +420,20 @@ class PrivateRecipeApiTests(TestCase):
         self.assertIn(s2.data, res.data)
         self.assertNotIn(s3.data, res.data)
 
+    def test_filter_featured(self):
+        ft_recipe_one = create_recipe(user=self.user, title='Featured Recipe One', is_featured=True)
+        ft_recipe_two = create_recipe(user=self.user, title='Featured Recipe Two', is_featured=True)
+        recipe_three = create_recipe(user=self.user, title='Not Featured Recipe')
+
+        params = {'is_featured': True}
+        res = self.client.get(RECIPES_URL, params)
+
+        s1 = RecipeSerializer(ft_recipe_one)
+        s2 = RecipeSerializer(ft_recipe_two)
+        s3 = RecipeSerializer(recipe_three)
+        self.assertIn(s1.data, res.data)
+        self.assertIn(s2.data, res.data)
+        self.assertNotIn(s3.data, res.data)
 
 class ImageUploadTests(TestCase):
 

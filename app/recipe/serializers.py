@@ -1,41 +1,70 @@
 from rest_framework import serializers
 
 from core.models import Ingredient, Recipe, Tag
+from user.serializers import UserSerializer
 
+class DynamicFieldsModelSerializer(serializers.ModelSerializer):
+    """
+    A ModelSerializer that takes an additional `fields` argument that
+    controls which fields should be displayed.
+    """
 
-class TagSerializer(serializers.ModelSerializer):
+    def __init__(self, *args, **kwargs):
+        # Don't pass the 'fields' arg up to the superclass
+        fields = kwargs.pop('fields', None)
 
+        # Instantiate the superclass normally
+        super().__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
+class TagSerializer(DynamicFieldsModelSerializer):
+
+    tag_recipes = serializers.StringRelatedField(many=True, required=False)
     class Meta:
         model = Tag
-        fields = ['id', 'name']
-        read_only_fields = ['id']
+        fields = ['id', 'name','tag_recipes']
+        read_only_fields = ['id','tag_recipes']
 
 
-class IngredientSerializer(serializers.ModelSerializer):
+class IngredientSerializer(DynamicFieldsModelSerializer):
 
+    ingredient_recipes = serializers.StringRelatedField(many=True, required=False)
     class Meta:
         model = Ingredient
-        fields = ['id', 'name']
-        read_only_fields = ['id']
+        fields = ['id', 'name','ingredient_recipes']
+        read_only_fields = ['id','ingredient_recipes']
 
 
 class RecipeSerializer(serializers.ModelSerializer):
 
-    tags = TagSerializer(many=True, required=False)
-    ingredients = IngredientSerializer(many=True, required=False)
+    tags = TagSerializer(many=True, required=False, fields=('id', 'name'))
+    ingredients = IngredientSerializer(many=True, required=False, fields=('id', 'name'))
+    user = UserSerializer(required=False)
 
     class Meta:
         model = Recipe
         fields = [
             'id',
+            'user',
             'title',
             'time_minutes',
             'price',
             'link',
+            'description',
+            'instructions',
+            'servings',
             'tags',
             'ingredients',
+            'image',
+            'is_featured',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id','user']
 
     def _get_or_create_tags(self, tags, recipe):
         auth_user = self.context['request'].user
@@ -85,8 +114,7 @@ class RecipeSerializer(serializers.ModelSerializer):
 class RecipeDetailSerializer(RecipeSerializer):
 
     class Meta(RecipeSerializer.Meta):
-        fields = RecipeSerializer.Meta.fields + ['description', 'image']
-
+        fields = RecipeSerializer.Meta.fields
 
 class RecipeImageSerializer(serializers.ModelSerializer):
 
