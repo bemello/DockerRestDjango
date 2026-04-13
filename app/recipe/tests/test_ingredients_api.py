@@ -7,7 +7,7 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from core.models import Ingredient, Recipe
+from core.models import Ingredient, Recipe, Category
 
 from recipe.serializers import IngredientSerializer
 
@@ -91,11 +91,12 @@ class PrivateIngredientsApiTest(TestCase):
     def test_filter_ingredients_assigned_to_recipe(self):
         ing1 = Ingredient.objects.create(user=self.user, name='Ingredient One')
         ing2 = Ingredient.objects.create(user=self.user, name='Ingredient Two')
+        category = Category.objects.get_or_create(name="Category Sample")[0]
         recipe = Recipe.objects.create(
             title='Any Test Recipe',
             time_minutes=10,
-            price=Decimal('4.99'),
             user=self.user,
+            category=category,
         )
         recipe.ingredients.add(ing1)
         res = self.client.get(INGREDIENTS_URL, {'assigned_only': 1})
@@ -108,17 +109,18 @@ class PrivateIngredientsApiTest(TestCase):
     def test_filtered_ingredients_unique(self):
         ing = Ingredient.objects.create(user=self.user, name='Sugar')
         Ingredient.objects.create(user=self.user, name='Wheat Flour')
+        category = Category.objects.get_or_create(name="Category Sample")[0]
         recipe1 = Recipe.objects.create(
             title='Another Test Recipe',
             time_minutes=5,
-            price=Decimal('1.99'),
             user=self.user,
+            category=category,
         )
         recipe2 = Recipe.objects.create(
             title='Yet Another Test Recipe',
             time_minutes=55,
-            price=Decimal('21.99'),
             user=self.user,
+            category=category,
         )
         recipe1.ingredients.add(ing)
         recipe2.ingredients.add(ing)

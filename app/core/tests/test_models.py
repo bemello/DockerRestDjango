@@ -14,7 +14,6 @@ from core import models
 def create_user(email="user@example.com", password="testpass123"):
     return get_user_model().objects.create_user(email, password)
 
-
 class ModelTests(TestCase):
 
     def test_create_user_with_email_successful(self):
@@ -49,19 +48,39 @@ class ModelTests(TestCase):
         self.assertTrue(user.is_superuser)
         self.assertTrue(user.is_staff)
 
+    def test_create_category(self):
+        category = models.Category.objects.create(name="Category Test")
+        self.assertEqual(str(category), category.name)
+
     def test_create_recipe(self):
         user = create_user("test@example.com", "testpass123")
+        category = models.Category.objects.create(name="Category Sample")
         recipe = models.Recipe.objects.create(
             user=user,
+            category=category,
             title="Sample Recipe Name",
             time_minutes=5,
-            price=Decimal("5.99"),
             description="Sample recipe description",
-            instructions="Sample instructions",
-            is_featured=True
+            is_featured=True,
         )
 
         self.assertEqual(str(recipe), recipe.title)
+
+    def test_create_step(self):
+        user = create_user("test@example.com", "testpass123")
+        category = models.Category.objects.create(name="Category Sample 2")
+        recipe = models.Recipe.objects.create(
+            user=user,
+            category=category,
+            title="Sample Recipe Name",
+            time_minutes=5,
+            description="Sample recipe description",
+            is_featured=True,
+        )
+        step1 = recipe.steps.create(step_number=1, title="Step 1", instruction="Description 1")
+        step2 = recipe.steps.create(step_number=2, title="Step 2", instruction="Description 2")
+
+        self.assertEqual(recipe.steps.count(), 2)
 
     def test_create_tag(self):
         user = create_user()

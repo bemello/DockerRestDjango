@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Outlet } from "react-router-dom";
+
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Home from "./pages/Home";
@@ -8,18 +9,21 @@ import Recipes from "./pages/Recipes";
 import CreateRecipe from "./pages/CreateRecipe";
 import UpdateRecipe from "./pages/UpdateRecipe";
 import NotFound from "./pages/NotFound";
+import Dashboard from "./pages/Dashboard";
+import LandingPage from "./pages/LandingPage";
+
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
-import ProfilePage from "./pages/ProfilePage";
 import ProtectedRoute from "./components/ProtectedRoute";
-import "./styles/fonts.css";
-import "./styles/style.css";
+
+import api from "./utils/api";
 import { USER_SESSION } from "./utils/constants";
+import ScrollToTop from "./utils/scrollToTop";
 
 function Logout({ setUser }) {
   localStorage.clear();
   setUser(null);
-  return <Navigate to="/login" />;
+  return <LandingPage />;
 }
 
 function RegisterAndLogout() {
@@ -38,66 +42,90 @@ function App() {
     }
   }, [user]);
 
-  return (
-    <BrowserRouter>
-      <Navbar user={user} />
-      <Routes>
-        <Route
-          path="/"
-          element={
+  function Layout() {
+    return (
+      <div className="wrapper">
+        <ScrollToTop />
+        <Navbar user={user} />
+        <main>
+          <Outlet />
+        </main>
+        <footer className="footer">
+          <Footer user={user} />
+        </footer>
+      </div>
+    );
+  }
+
+  const router = createBrowserRouter([
+    {
+      element: <Layout />,
+      children: [
+        {
+          path: "/",
+          element: user ? <Home /> : <LandingPage />,
+        },
+        {
+          path: "/dashboard",
+          element: (
             <ProtectedRoute>
-              <Home />
+              <Dashboard user={user} setUser={setUser} />
             </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/recipes"
-          element={
-            <ProtectedRoute>
-              <Recipes />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/recipe"
-          element={
-            <ProtectedRoute>
-              <Recipe />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/recipe/new"
-          element={
+          ),
+        },
+        {
+          path: "/recipes",
+          element: <Recipes />,
+        },
+        {
+          path: "/recipe/new",
+          element: (
             <ProtectedRoute>
               <CreateRecipe />
             </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/recipe/edit"
-          element={
+          ),
+        },
+        {
+          path: "/recipe/:id",
+          loader: async ({ params }) => {
+            const res = await api.get(`/api/recipe/recipes/${params.id}/`);
+            return res.data;
+          },
+          element: <Recipe />,
+        },
+        {
+          path: "/recipe/:id/edit",
+          loader: async ({ params }) => {
+            const res = await api.get(`/api/recipe/recipes/${params.id}/`);
+            return res.data;
+          },
+          element: (
             <ProtectedRoute>
               <UpdateRecipe />
             </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <ProfilePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/login" element={<Login setUser={setUser} />} />
-        <Route path="/logout" element={<Logout setUser={setUser} />} />
-        <Route path="/register" element={<RegisterAndLogout />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-      <Footer />
-    </BrowserRouter>
-  );
+          ),
+        },
+        {
+          path: "/login",
+          element: <Login setUser={setUser} />,
+        },
+        {
+          path: "/logout",
+          element: <Logout setUser={setUser} />,
+        },
+        {
+          path: "/register",
+          element: <RegisterAndLogout />,
+        },
+        {
+          path: "*",
+          element: <NotFound />,
+        },
+      ],
+    },
+  ]);
+
+  return <RouterProvider router={router} />;
 }
 
 export default App;

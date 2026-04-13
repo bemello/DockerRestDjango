@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from core.models import Ingredient, Recipe, Tag
+from core.models import Ingredient, Recipe, Tag, Step, Category
 from user.serializers import UserSerializer
 
 class DynamicFieldsModelSerializer(serializers.ModelSerializer):
@@ -31,7 +31,6 @@ class TagSerializer(DynamicFieldsModelSerializer):
         fields = ['id', 'name','tag_recipes']
         read_only_fields = ['id','tag_recipes']
 
-
 class IngredientSerializer(DynamicFieldsModelSerializer):
 
     ingredient_recipes = serializers.StringRelatedField(many=True, required=False)
@@ -40,12 +39,35 @@ class IngredientSerializer(DynamicFieldsModelSerializer):
         fields = ['id', 'name','ingredient_recipes']
         read_only_fields = ['id','ingredient_recipes']
 
+class StepSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Step
+        fields = ['id', 'step_number', 'title', 'instruction']
+        read_only_fields = ['id']
+
+class CategorySerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Category
+        fields = ['id','name']
+        read_only_fields = ['id']
 
 class RecipeSerializer(serializers.ModelSerializer):
+    tags = TagSerializer(
+            many=True,
+            required=False,
+            fields=('id', 'name'))
+    ingredients = IngredientSerializer(
+            many=True,
+            required=False,
+            fields=('id', 'name'))
+    steps = StepSerializer(
+            many=True,
+            required=False)
 
-    tags = TagSerializer(many=True, required=False, fields=('id', 'name'))
-    ingredients = IngredientSerializer(many=True, required=False, fields=('id', 'name'))
-    user = UserSerializer(required=False)
+    user = UserSerializer(required=False, fields=('id', 'email', 'name', 'profile_picture'))
+    category = serializers.SlugRelatedField(required=False, queryset=Category.objects.all(), slug_field='name')
 
     class Meta:
         model = Recipe
@@ -53,16 +75,16 @@ class RecipeSerializer(serializers.ModelSerializer):
             'id',
             'user',
             'title',
-            'time_minutes',
-            'price',
-            'link',
             'description',
-            'instructions',
             'servings',
-            'tags',
+            'time_minutes',
+            'category',
             'ingredients',
-            'image',
+            'steps',
+            'chefs_tip',
+            'tags',
             'is_featured',
+            'image',
         ]
         read_only_fields = ['id','user']
 
@@ -84,18 +106,27 @@ class RecipeSerializer(serializers.ModelSerializer):
             )
             recipe.ingredients.add(ingredient_obj)
 
+    def _create_steps(self, steps, recipe):
+        for step in steps:
+            recipe.steps.create(**step)
+
+
     def create(self, validated_data):
+        print("Validated Data: ", validated_data)
         tags = validated_data.pop('tags', [])
         ingredients = validated_data.pop('ingredients', [])
+        steps = validated_data.pop('steps', [])
         recipe = Recipe.objects.create(**validated_data)
         self._get_or_create_tags(tags, recipe)
         self._get_or_create_ingredients(ingredients, recipe)
-
+        self._create_steps(steps, recipe)
         return recipe
 
     def update(self, instance, validated_data):
         tags = validated_data.pop('tags', None)
         ingredients = validated_data.pop('ingredients', None)
+        steps = validated_data.pop('steps', None)
+
         if tags is not None:
             instance.tags.clear()
             self._get_or_create_tags(tags, instance)
@@ -104,17 +135,17 @@ class RecipeSerializer(serializers.ModelSerializer):
             instance.ingredients.clear()
             self._get_or_create_ingredients(ingredients, instance)
 
+        if steps is not None:
+            instance.steps.clear()
+            self._create_steps(steps, instance)
+
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         instance.save()
         return instance
 
-
-class RecipeDetailSerializer(RecipeSerializer):
-
-    class Meta(RecipeSerializer.Meta):
-        fields = RecipeSerializer.Meta.fields
 
 class RecipeImageSerializer(serializers.ModelSerializer):
 
@@ -123,3 +154,7 @@ class RecipeImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image']
         read_only_fields = ['id']
         extra_kwargs = {'image': {'required': 'True'}}
+
+class RecipesByCategorySerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    category = serializers.CharField(source='category__name')

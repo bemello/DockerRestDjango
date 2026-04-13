@@ -130,9 +130,10 @@ class PrivateUserApiTests(TestCase):
         self.assertEqual(
             res.data,
             {
-                "name": self.user.name,
                 "email": self.user.email,
-                "profile_picture": self.user.profile_picture,
+                "name": self.user.name,
+                "profile_picture": None,
+                "access_history": [],
             },
         )
 

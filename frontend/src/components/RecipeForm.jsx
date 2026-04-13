@@ -1,12 +1,17 @@
-import { useState } from "react";
-import api from "../utils/api";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../utils/api";
 
 function RecipeForm({ recipe }) {
   const navigate = useNavigate();
   const isPersisted = recipe != null;
   const [loading, setLoading] = useState(false);
   const [changedFields, setChangedFields] = useState(new Map());
+  const [categories, setCategories] = useState();
+
+  useEffect(() => {
+    api.get("api/recipe/categories/").then((res) => setCategories(res.data));
+  }, []);
 
   const addChangedField = (e) => {
     if (e.target.id === "time_minutes") {
@@ -30,25 +35,11 @@ function RecipeForm({ recipe }) {
     return "";
   });
 
-  const [instructions, setInstructions] = useState(() => {
-    if (isPersisted) {
-      return recipe.instructions;
-    }
-    return "";
-  });
-
   const [servings, setServings] = useState(() => {
     if (isPersisted) {
       return recipe.servings;
     }
     return 1;
-  });
-
-  const [price, setPrice] = useState(() => {
-    if (isPersisted) {
-      return recipe.price;
-    }
-    return 0.0;
   });
 
   const [time, setTime] = useState(() => {
@@ -58,10 +49,25 @@ function RecipeForm({ recipe }) {
     return 1;
   });
 
-  const [url, setUrl] = useState(() => {
+  const [chefs_tip, setChefsTip] = useState(() => {
     if (isPersisted) {
-      return recipe.link;
+      return recipe.chefs_tip;
     }
+  });
+
+  const [steps, setSteps] = useState(() => {
+    if (isPersisted) {
+      const res = [];
+      recipe.steps.forEach((el) => {
+        res.push({
+          step_number: el.step_number,
+          title: el.title,
+          instruction: el.instruction,
+        });
+      });
+      return res;
+    }
+    return new Array();
   });
 
   const [ingredients, setIngredients] = useState(() => {
@@ -89,6 +95,95 @@ function RecipeForm({ recipe }) {
     }
     return new Array();
   });
+
+  const [category, setCategory] = useState(() => {
+    if (isPersisted) {
+      return recipe.category;
+    }
+    return "Select a Category";
+  });
+
+  function openStepsModal() {
+    const modal = document.getElementById("stepsModal");
+    modal.style.display = "grid";
+    document.getElementById("modal-header").innerText = "Add a New Step";
+    document.getElementById("save_step").innerText = "Save";
+  }
+
+  function closeStepsModal() {
+    const modal = document.getElementById("stepsModal");
+    modal.style.display = "none";
+    setStepTitle("");
+    setStepInstructions("");
+  }
+
+  function editStep(step, index) {
+    setStepTitle(step.title);
+    setStepInstructions(step.instruction);
+    setStepIndex(index);
+    const modal = document.getElementById("stepsModal");
+    modal.style.display = "grid";
+    document.getElementById("modal-header").innerText = "Edit This Step";
+    document.getElementById("save_step").innerText = "Update";
+  }
+
+  function saveStep() {
+    if (stepTitle && stepInstructions) {
+      if (document.getElementById("save_step").innerText === "Save") {
+        steps.push({
+          step_number: steps.length + 1,
+          title: stepTitle,
+          instruction: stepInstructions,
+        });
+      } else {
+        steps[stepIndex].title = stepTitle;
+        steps[stepIndex].instruction = stepInstructions;
+      }
+      setSteps(steps);
+      setChangedFields(changedFields.set("steps", steps));
+    }
+    closeStepsModal();
+  }
+
+  function moveStepUp(index) {
+    const curr_steps = [...steps];
+    const rearranged_steps = [
+      ...curr_steps.slice(0, index - 1),
+      ...curr_steps.splice(index, 1),
+      ...curr_steps.slice(index - 1),
+    ];
+    rearranged_steps.forEach((el, i) => {
+      el.step_number = i + 1;
+    });
+    setSteps(rearranged_steps);
+    setChangedFields(changedFields.set("steps", rearranged_steps));
+  }
+
+  function moveStepDown(index) {
+    const curr_steps = [...steps];
+    const rearranged_steps = [
+      ...curr_steps.slice(0, index),
+      ...curr_steps.splice(index + 1, 1),
+      ...curr_steps.splice(index, 1),
+      ...curr_steps.slice(index),
+    ];
+    rearranged_steps.forEach((el, i) => {
+      el.step_number = i + 1;
+    });
+    setSteps(rearranged_steps);
+    setChangedFields(changedFields.set("steps", rearranged_steps));
+  }
+
+  function removeStep(step) {
+    const updated_steps = steps.filter(
+      (obj) => obj.step_number !== step.step_number,
+    );
+    updated_steps.forEach((el, index) => {
+      el.step_number = index + 1;
+    });
+    setSteps(updated_steps);
+    setChangedFields(changedFields.set("steps", updated_steps));
+  }
 
   function addNewIngredient() {
     if (ingredient && !ingredients.includes({ name: ingredient })) {
@@ -126,8 +221,11 @@ function RecipeForm({ recipe }) {
 
   const [ingredient, setIngredient] = useState("");
   const [tag, setTag] = useState("");
+  const [stepTitle, setStepTitle] = useState("");
+  const [stepInstructions, setStepInstructions] = useState("");
+  const [stepIndex, setStepIndex] = useState(0);
 
-  const handleCancel = () => {
+  const handleBack = () => {
     navigate(-1);
   };
 
@@ -142,256 +240,389 @@ function RecipeForm({ recipe }) {
           JSON.stringify(Object.fromEntries(changedFields)),
           { headers: { "content-type": "application/json" } },
         );
-        navigate("/");
+        navigate(`/recipe/${recipe.id}`);
       } else {
         const res = await api.post(
           "api/recipe/recipes/",
           {
             title: title,
             description: description,
-            price: price,
             time_minutes: time * 60,
-            link: url,
+            servings: servings,
+            steps: steps,
+            ingredients: ingredients,
+            tags: tags,
+            chefs_tip: chefs_tip,
+            category: category,
           },
           { headers: { "content-type": "application/json" } },
         );
-        navigate("/");
+        navigate(`/recipe/${res.data.id}`);
       }
     } catch (error) {
-      alert(error);
+      console.log(error);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="d-flex justify-content-center py-5">
-      <div className="w-50">
-        <div className="recipe-form default-form">
-          <form onSubmit={handleSubmit} id="form" method="post">
-            <div className="mb-3 mt-3">
-              <label htmlFor="title">Title</label>
-              <input
-                id="title"
-                className="form-control"
-                type="text"
-                value={title}
-                onChange={(e) => {
-                  setTitle(e.target.value);
-                  addChangedField(e);
-                }}
-              />
+    <div className="recipe-form">
+      <div className="left-grid">
+        <div className="title-category-grid">
+          <div>
+            <label className="recipe-field-label">Recipe Title</label>
+            <input
+              id="title"
+              className="recipe-field"
+              placeholder="Enter recipe title..."
+              type="text"
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                addChangedField(e);
+              }}
+            />
+          </div>
+          <div>
+            <label className="recipe-field-label">Category</label>
+            <select
+              id="category"
+              className="border-radius-large height-lg"
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                addChangedField(e);
+              }}
+            >
+              <button className="select-button">
+                <div>
+                  <selectedcontent></selectedcontent>
+                </div>
+              </button>
+              <div>
+                {categories?.map((category) => (
+                  <option key={category.id} value={category.name}>
+                    <div className="custom-option">
+                      <span className="option-text">{category.name}</span>
+                    </div>
+                  </option>
+                ))}
+              </div>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="recipe-field-label">Description</label>
+          <input
+            id="description"
+            className="recipe-field"
+            placeholder="What makes this dish special?"
+            type="text"
+            value={description}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              addChangedField(e);
+            }}
+          />
+        </div>
+        <div>
+          <label className="recipe-field-label">Chef's Tips</label>
+          <textarea
+            id="chefs_tip"
+            rows="4"
+            placeholder="Any tips or secrets to share?"
+            className="recipe-field"
+            value={chefs_tip}
+            onChange={(e) => {
+              setChefsTip(e.target.value);
+              addChangedField(e);
+            }}
+          />
+        </div>
+        <div className="recipe-sliders">
+          <div className="slider-container">
+            <div className="slider-label">
+              <span className="material-symbols-outlined">schedule</span>
+              <span>{time}h</span>
             </div>
-            <div className="mb-3 mt-3">
-              <label htmlFor="description">Description</label>
+            <div className="flex-grow">
               <input
-                id="description"
-                className="form-control"
-                type="text"
-                value={description}
-                onChange={(e) => {
-                  setDescription(e.target.value);
-                  addChangedField(e);
-                }}
-              />
-            </div>
-            <div className="mb-3 mt-3">
-              <label htmlFor="instructions">Instructions</label>
-              <textarea
-                id="instructions"
-                className="form-control"
-                rows="10"
-                value={instructions}
-                onChange={(e) => {
-                  setInstructions(e.target.value);
-                  addChangedField(e);
-                }}
-              />
-            </div>
-            <div className="input-group mb-3">
-              <span className="input-group-text">
-                <i className="bi bi-currency-euro"></i>
-              </span>
-              <span className="input-group-text input-group-range">
-                <output
-                  htmlFor="price"
-                  id="price_range_value"
-                  aria-hidden="true"
-                >
-                  {price}
-                </output>
-              </span>
-              <input
-                id="price"
-                className="form-range custom-range border-0 align-middle"
-                type="range"
-                step="0.05"
-                min="0.00"
-                max="50.00"
-                value={price}
-                onChange={(e) => {
-                  price_range_value.value = parseFloat(e.target.value).toFixed(
-                    2,
-                  );
-                  setPrice(parseFloat(e.target.value).toFixed(2));
-                  addChangedField(e);
-                }}
-              />
-            </div>
-            <div className="input-group mb-3">
-              <span className="input-group-text">
-                <i className="bi bi-clock"></i>
-              </span>
-              <span className="input-group-text input-group-range">
-                <output
-                  htmlFor="time_minutes"
-                  id="time_range_value"
-                  aria-hidden="true"
-                >
-                  {time}h
-                </output>
-              </span>
-              <input
-                id="time_minutes"
-                className="form-range custom-range border-0 align-middle"
-                type="range"
-                step="0.5"
-                min="0.5"
+                className="w-full"
                 max="8"
+                min="0.5"
+                step="0.5"
+                type="range"
                 value={time}
                 onChange={(e) => {
-                  time_range_value.value = e.target.value + "h";
                   setTime(e.target.value);
                   addChangedField(e);
                 }}
               />
             </div>
-            <div className="input-group mb-3">
-              <span className="input-group-text">
-                <i className="bi bi-people"></i>
-              </span>
-              <span className="input-group-text input-group-range">
-                <output
-                  htmlFor="servings"
-                  id="servings_range_value"
-                  aria-hidden="true"
-                >
-                  {servings}
-                </output>
-              </span>
+          </div>
+          <div className="slider-container">
+            <div className="slider-label">
+              <span className="material-symbols-outlined">group</span>
+              <span>{servings}</span>
+            </div>
+            <div className="flex-grow">
               <input
-                id="servings"
-                className="form-range custom-range border-0 align-middle"
-                type="range"
-                step="1"
+                className="w-full"
+                max="12"
                 min="1"
-                max="10"
+                step="1"
+                type="range"
                 value={servings}
                 onChange={(e) => {
-                  servings_range_value.value = e.target.value;
                   setServings(e.target.value);
                   addChangedField(e);
                 }}
               />
             </div>
-            <div className="mb-3 mt-3">
-              <label htmlFor="link">Link</label>
+          </div>
+        </div>
+      </div>
+      <div className="right-grid">
+        <div className="grid md:grid-cols-2 gap-8">
+          <div>
+            <label className="recipe-field-label">Ingredients</label>
+            <div className="flex gap-1.5">
               <input
-                id="link"
-                className="form-control"
+                className="recipe-field"
+                placeholder="Add ingredient..."
                 type="text"
-                value={url}
+                value={ingredient}
                 onChange={(e) => {
-                  setUrl(e.target.value);
-                  addChangedField(e);
+                  setIngredient(e.target.value);
                 }}
               />
+              <button
+                className="bg-accent hover:bg-accent/90 text-info px-2 py-2 rounded-xl font-bold transition-all flex items-center justify-center shadow-lg shadow-primary/10"
+                type="button"
+                onClick={() => addNewIngredient()}
+              >
+                <span className="material-symbols-outlined">add</span>
+              </button>
             </div>
-            <span className="mt-3">
-              Ingredients <em>(Click an ingredient to remove it)</em>
-            </span>
-            <div className="row row-cols-auto p-1">
+            <div className="flex flex-wrap py-2 gap-2">
+              {ingredients.length === 0 && (
+                <p className="text-center text-primary/50 py-12 border border-dashed border-primary/30 rounded-md w-full">
+                  No ingredients added yet.
+                </p>
+              )}
               {ingredients.map((ing, index) => (
-                <div className="col" key={index}>
+                <span
+                  id={ing.name + "_ing"}
+                  key={index}
+                  className="inline-flex items-center gap-2 px-2 py-1 bg-info text-deep-navy rounded-full text-sm font-semibold cursor-default"
+                >
+                  {ing.name}
                   <span
-                    id={ing.name + "_ing"}
-                    className="mb-1 badge"
-                    key={index}
+                    className="material-symbols-outlined cursor-pointer hover:text-accent transition-colors"
                     onClick={() => {
                       removeIngredient(ing.name);
                     }}
                   >
-                    {ing.name}
+                    close
                   </span>
-                </div>
+                </span>
               ))}
             </div>
-            <div className="input-group mb-3 mt-0">
+          </div>
+          <div>
+            <label className="recipe-field-label">Tags</label>
+            <div className="flex gap-1.5">
               <input
-                id="ingredient"
-                className="form-control"
-                type="text"
-                value={ingredient}
-                onChange={(e) => setIngredient(e.target.value)}
-              />
-              <button
-                className="btn btn-default"
-                type="button"
-                id="add_ingredient"
-                onClick={() => addNewIngredient()}
-              >
-                Add
-              </button>
-            </div>
-            <span className="mt-3">
-              Tags <em>(Click a tag to remove it)</em>
-            </span>
-            <div className="row row-cols-auto p-1">
-              {tags.map((t, index) => (
-                <div className="col" key={index}>
-                  <span
-                    id={t.name + "_tag"}
-                    className="mb-1 badge"
-                    key={index}
-                    onClick={() => {
-                      removeTag(t.name);
-                    }}
-                  >
-                    {t.name}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="input-group mb-3 mt-0">
-              <input
-                id="tag"
-                className="form-control"
+                className="recipe-field"
+                placeholder="Add tag..."
                 type="text"
                 value={tag}
-                onChange={(e) => setTag(e.target.value)}
+                onChange={(e) => {
+                  setTag(e.target.value);
+                }}
               />
               <button
-                className="btn btn-default"
+                className="bg-accent hover:bg-accent/90 text-info px-2 py-2 rounded-xl font-bold transition-all flex items-center justify-center shadow-lg shadow-primary/10"
                 type="button"
-                id="add_tag"
                 onClick={() => addNewTag()}
               >
-                Add
+                <span className="material-symbols-outlined">add</span>
               </button>
             </div>
-          </form>
-          <button type="submit" form="form" className="btn btn-default me-2">
-            Save Recipe
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="btn btn-secondary"
-          >
-            Cancel
-          </button>
-          <div className="d-grid gap-2"></div>
+            <div className="flex flex-wrap py-2 gap-2">
+              {tags.length === 0 && (
+                <p className="text-center text-primary/50 py-12 border border-dashed border-primary/30 rounded-md w-full">
+                  No tags added yet.
+                </p>
+              )}
+              {tags.map((tag, index) => (
+                <span
+                  id={tag.name + "_tag"}
+                  key={index}
+                  className="inline-flex items-center gap-2 px-2 py-1 bg-info text-deep-navy rounded-full text-sm font-semibold cursor-default"
+                >
+                  {tag.name}
+                  <span
+                    className="material-symbols-outlined text-base cursor-pointer hover:text-accent transition-colors"
+                    onClick={() => {
+                      removeTag(tag.name);
+                    }}
+                  >
+                    close
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
+        <div>
+          <div className="flex items-start justify-between">
+            <label className="recipe-field-label">Steps</label>
+            <button
+              className="btn-add-step"
+              type="button"
+              onClick={openStepsModal}
+            >
+              <span className="material-symbols-outlined">add</span>
+              {/* Add New Step */}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-2 mb-4">
+            {steps.length === 0 && (
+              <p className="text-center text-primary/50 py-24 border border-dashed border-primary/30 rounded-md w-full">
+                No steps added yet.
+              </p>
+            )}
+            {steps.map((step, index) => (
+              <div className="flex items-center gap-8" key={index}>
+                <div className="w-5 text-accent text-2xl font-display font-medium items-center justify-center px-2 pb-2">
+                  {index + 1}
+                </div>
+                <div className="recipe-field">{step.title}</div>
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    className={
+                      index === 0 ? "text-primary/20" : "text-primary"
+                    }
+                    onClick={() => moveStepUp(index)}
+                    disabled={index === 0}
+                  >
+                    <span className="material-symbols-outlined">stat_2</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      index === steps.length - 1
+                        ? "text-primary/20"
+                        : "text-primary"
+                    }
+                    onClick={() => moveStepDown(index)}
+                    disabled={index === steps.length - 1}
+                  >
+                    <span className="material-symbols-outlined">
+                      stat_minus_2
+                    </span>
+                  </button>
+                  <div className="w-0.5 h-6 mb-1 mx-2 bg-primary/30"></div>
+                  <button
+                    type="button"
+                    className="text-accent"
+                    onClick={() => editStep(step, index)}
+                  >
+                    <span className="material-symbols-outlined">edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="text-red-500 ml-1"
+                    onClick={() => removeStep(step)}
+                  >
+                    <span className="material-symbols-outlined">delete</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div
+            id="stepsModal"
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modalTitle"
+          >
+            <div className="modal-container">
+              <div className="top-r-corner-buttons">
+                <button
+                  type="button"
+                  onClick={closeStepsModal}
+                  aria-label="Close"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <header className="modal-header">
+                <h2 id="modal-header"></h2>
+                <div className="divider"></div>
+              </header>
+              <main className="modal-content">
+                <div>
+                  <label className="recipe-field-label">Title</label>
+                  <input
+                    type="text"
+                    id="Confirm"
+                    placeholder="What is the step title?"
+                    className="recipe-field"
+                    value={stepTitle}
+                    onChange={(e) => {
+                      setStepTitle(e.target.value);
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="recipe-field-label">Instructions</label>
+                  <textarea
+                    id="Instructions"
+                    rows="8"
+                    placeholder="What should be done?"
+                    className="recipe-field"
+                    value={stepInstructions}
+                    onChange={(e) => {
+                      setStepInstructions(e.target.value);
+                    }}
+                  />
+                </div>
+              </main>
+              <footer className="modal-footer">
+                <button
+                  id="save_step"
+                  type="button"
+                  className="btn"
+                  onClick={() => saveStep()}
+                >
+                  Add Step
+                </button>
+              </footer>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="col-span-2 flex flex-col md:flex-row gap-2 items-center justify-center">
+        <button
+          className="w-full md:w-auto px-6 py-2 text-info text-lg font-bold rounded-xl transition-all bg-primary/15 hover:bg-primary/20"
+          type="button"
+          onClick={handleBack}
+        >
+          Back
+        </button>
+        <button
+          className="w-full md:w-auto px-6 py-2 text-info text-lg font-bold rounded-xl transition-all bg-accent/80 hover:bg-accent"
+          type="button"
+          onClick={handleSubmit}
+        >
+          Save
+        </button>
       </div>
     </div>
   );

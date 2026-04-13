@@ -11,8 +11,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from core.models import Recipe, Tag, Ingredient
-from recipe.serializers import RecipeSerializer, RecipeDetailSerializer
+from core.models import Recipe, Tag, Ingredient, Step, Category
+from recipe.serializers import RecipeSerializer
 
 
 RECIPES_URL = reverse('recipe:recipe-list')
@@ -25,26 +25,32 @@ def detail_url(recipe_id):
 def image_upload_url(recipe_id):
     return reverse('recipe:recipe-upload-image', args=[recipe_id])
 
-
 def create_recipe(user, **params):
+    category, created = Category.objects.get_or_create(name="Category Sample")
 
     defaults = {
         'title': 'Sample Recipe Title',
         'time_minutes': 25,
-        'price': Decimal('5.55'),
-        'description': 'Sample Description',
-        'instructions':'Do this, this and that',
-        'link': 'http://example.com/recipe.pdf',
         'is_featured': False,
+        'category': category,
     }
     defaults.update(params)
 
     recipe = Recipe.objects.create(user=user, **defaults)
     return recipe
 
-
 def create_user(**params):
     return get_user_model().objects.create_user(**params)
+
+def create_step(recipe, **params):
+    defaults = {
+        'step_number': 1,
+        'title': 'Sample Step Title',
+    }
+    defaults.update(params)
+
+    step = Step.objects.create(recipe=recipe, **defaults)
+    return step
 
 
 class PublicRecipeApiTests(TestCase):
@@ -100,20 +106,18 @@ class PrivateRecipeApiTests(TestCase):
         url = detail_url(recipe.id)
         res = self.client.get(url)
 
-        serializer = RecipeDetailSerializer(recipe)
+        serializer = RecipeSerializer(recipe)
         self.assertEqual(res.data, serializer.data)
 
     def test_create_recipe(self):
+        category, created = Category.objects.get_or_create(name="Category Sample")
         recipe_payload = {
             'title': 'Sample Recipe Title',
             'time_minutes': 23,
-            'price': Decimal('5.99'),
-            'description': 'Sample Description',
-            'instructions': 'Please, follow the steps accordingly',
+            'category': category.name,
             'servings': 3,
-            'link': 'http://example.com/recipe.pdf',
         }
-        res = self.client.post(RECIPES_URL, recipe_payload)
+        res = self.client.post(RECIPES_URL, recipe_payload, format='json')
 
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         recipe = Recipe.objects.get(id=res.data['id'])
@@ -124,16 +128,14 @@ class PrivateRecipeApiTests(TestCase):
         self.assertEqual(recipe.user, self.user)
 
     def test_create_featured_recipe(self):
+        category, created = Category.objects.get_or_create(name="Category Sample")
         recipe_payload = {
             'title': 'Featured Recipe Title',
             'time_minutes': 23,
-            'price': Decimal('5.99'),
-            'description': 'Featured Recipe Sample Description',
-            'instructions': 'Follow the feature recipe instructions',
-            'link': 'http://example.com/feature_recipe.pdf',
-            'is_featured': True
+            'category': category.name,
+            'is_featured': True,
         }
-        res = self.client.post(RECIPES_URL, recipe_payload)
+        res = self.client.post(RECIPES_URL, recipe_payload, format='json')
 
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         recipe = Recipe.objects.get(id=res.data['id'])
@@ -145,7 +147,7 @@ class PrivateRecipeApiTests(TestCase):
 
     def test_recipe_partial_update(self):
         recipe = create_recipe(user=self.user)
-        original_link = recipe.link
+        original_category = recipe.category
 
         payload = {'title': 'New Recipe Title'}
         url = detail_url(recipe.id)
@@ -154,23 +156,27 @@ class PrivateRecipeApiTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         recipe.refresh_from_db()
         self.assertEqual(recipe.title, payload['title'])
-        self.assertEqual(recipe.link, original_link)
+        self.assertEqual(recipe.category, original_category)
         self.assertEqual(recipe.user, self.user)
 
     def test_recipe_full_update(self):
         recipe = create_recipe(self.user)
+        category, created = Category.objects.get_or_create(name="Category Sample Two")
 
         payload = {
             'title': 'New Recipe Title',
-            'link': 'http://example.com/new-recipe.pdf',
-            'description': 'New Recipe Description',
-            'instructions': 'Instructions',
+            'description': 'New Description',
             'servings': 4,
             'time_minutes': 10,
-            'price': Decimal('2.50'),
+            'category': category.name,
+            'ingredients': [{'name': 'Lemon'}, {'name': 'Fish Sauce'}],
+            'steps': [{'step_number': 1, 'title': 'Step 1', 'instruction': 'Step 1 Description'}, {'step_number': 2, 'title': 'Step 2', 'instruction': 'Step 2 Description'}],
+            'chefs_tip': 'New Chefs Tip',
+            'tags': [{'name': 'Thai'}, {'name': 'Dinner'}],
+            'is_featured': False,
         }
         url = detail_url(recipe.id)
-        res = self.client.put(url, payload)
+        res = self.client.put(url, payload, format='json')
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         recipe.refresh_from_db()
@@ -216,7 +222,6 @@ class PrivateRecipeApiTests(TestCase):
         payload = {
             'title': 'Thay Prawn Curry',
             'time_minutes': 30,
-            'price': Decimal('19.90'),
             'tags': [{'name': 'Thai'}, {'name': 'Dinner'}],
         }
         res = self.client.post(RECIPES_URL, payload, format='json')
@@ -232,12 +237,30 @@ class PrivateRecipeApiTests(TestCase):
             ).exists()
             self.assertTrue(exists)
 
+    def test_create_recipe_with_steps(self):
+        payload = {
+            'title': 'Thay Prawn Curry',
+            'time_minutes': 30,
+            'steps': [{'step_number': 1, 'title': 'Step 1', 'instruction': 'Step 1 Description'}, {'step_number': 2, 'title': 'Step 2', 'instruction': 'Step 2 Description'}],
+        }
+        res = self.client.post(RECIPES_URL, payload, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        recipes = Recipe.objects.filter(user=self.user)
+        self.assertEqual(recipes.count(), 1)
+        recipe = recipes[0]
+        self.assertEqual(recipe.steps.count(), 2)
+        for step in payload['steps']:
+            exists = recipe.steps.filter(
+                title=step['title'], step_number=step['step_number'], instruction=step['instruction']
+            ).exists()
+            self.assertTrue(exists)
+
     def test_create_recipe_with_existing_tags(self):
         tag_indian = Tag.objects.create(user=self.user, name='Indian')
         payload = {
             'title': 'Pongal',
             'time_minutes': 60,
-            'price': Decimal('8.99'),
             'tags': [{'name': 'Indian'}, {'name': 'Breakfast'}],
         }
         res = self.client.post(RECIPES_URL, payload, format='json')
@@ -295,7 +318,6 @@ class PrivateRecipeApiTests(TestCase):
         payload = {
             'title': 'Mashed Potatoes',
             'time_minutes': 15,
-            'price': Decimal('3.99'),
             'ingredients': [
                 {'name': 'Butter'},
                 {'name': 'Potatoes'},
@@ -320,7 +342,6 @@ class PrivateRecipeApiTests(TestCase):
         payload = {
             'title': 'Vietnamese Soup',
             'time_minutes': 25,
-            'price': '2.55',
             'ingredients': [{'name': 'Lemon'}, {'name': 'Fish Sauce'}],
         }
         res = self.client.post(RECIPES_URL, payload, format='json')
@@ -387,6 +408,7 @@ class PrivateRecipeApiTests(TestCase):
         tag_two = Tag.objects.create(user=self.user, name='Vegetarian')
 
         recipe_one.tags.add(tag_one)
+        recipe_one.tags.add(tag_two)
         recipe_two.tags.add(tag_two)
 
         params = {'tags': f'{tag_one.id},{tag_two.id}'}
@@ -396,7 +418,7 @@ class PrivateRecipeApiTests(TestCase):
         s2 = RecipeSerializer(recipe_two)
         s3 = RecipeSerializer(recipe_three)
         self.assertIn(s1.data, res.data)
-        self.assertIn(s2.data, res.data)
+        self.assertNotIn(s2.data, res.data)
         self.assertNotIn(s3.data, res.data)
 
     def test_filter_by_ingredients(self):
@@ -408,6 +430,7 @@ class PrivateRecipeApiTests(TestCase):
         ing_two = Ingredient.objects.create(user=self.user, name='Chicken')
 
         recipe_one.ingredients.add(ing_one)
+        recipe_one.ingredients.add(ing_two)
         recipe_two.ingredients.add(ing_two)
 
         params = {'ingredients': f'{ing_one.id},{ing_two.id}'}
@@ -417,7 +440,7 @@ class PrivateRecipeApiTests(TestCase):
         s2 = RecipeSerializer(recipe_two)
         s3 = RecipeSerializer(recipe_three)
         self.assertIn(s1.data, res.data)
-        self.assertIn(s2.data, res.data)
+        self.assertNotIn(s2.data, res.data)
         self.assertNotIn(s3.data, res.data)
 
     def test_filter_featured(self):
